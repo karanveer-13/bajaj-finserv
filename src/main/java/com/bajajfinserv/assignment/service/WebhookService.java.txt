@@ -1,0 +1,168 @@
+package com.bajajfinserv.assignment.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.http.*;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+public class WebhookService implements CommandLineRunner {
+
+    private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+
+    public WebhookService() {
+        this.restTemplate = new RestTemplate();
+        this.objectMapper = new ObjectMapper();
+    }
+
+    @Override
+    public void run(String... args) throws Exception {
+        System.out.println("=== Starting Bajaj Finserv Health Assignment ===");
+        
+        try {
+            // Step 1: Generate webhook and get response
+            WebhookResponse webhookResponse = generateWebhook();
+            
+            // Step 2: Determine question based on regNo
+            String regNo = "REG12347";
+            int lastTwoDigits = Integer.parseInt(regNo.substring(regNo.length() - 2));
+            boolean isOdd = lastTwoDigits % 2 != 0;
+            
+            System.out.println("\n=== Question Assignment ===");
+            System.out.println("Registration Number: " + regNo);
+            System.out.println("Last two digits: " + lastTwoDigits);
+            System.out.println("Question type: " + (isOdd ? "Odd (Question 1)" : "Even (Question 2)"));
+            
+            // Step 3: Get the SQL solution based on question type
+            String sqlQuery = getSqlSolution(isOdd);
+            
+            // Step 4: Submit the solution
+            submitSolution(webhookResponse.webhook, webhookResponse.accessToken, sqlQuery);
+            
+            System.out.println("\n=== Assignment completed successfully! ===");
+            
+        } catch (Exception e) {
+            System.err.println("Error during assignment execution: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private WebhookResponse generateWebhook() throws Exception {
+        String url = "https://bfhldevapigw.healthrx.co.in/hiring/generateWebhook/JAVA";
+        
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("User-Agent", "Spring-Boot-Assignment/1.0");
+        
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("name", "John Doe");
+        requestBody.put("regNo", "REG12347");
+        requestBody.put("email", "john@example.com");
+        
+        HttpEntity<Map<String, String>> entity = new HttpEntity<>(requestBody, headers);
+        
+        System.out.println("\n=== Generating webhook ===");
+        System.out.println("URL: " + url);
+        System.out.println("Request Body: " + objectMapper.writeValueAsString(requestBody));
+        
+        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+        
+        System.out.println("Response Status: " + response.getStatusCode());
+        System.out.println("Response Body: " + response.getBody());
+        
+        // Parse the response to extract webhook URL and access token
+        JsonNode jsonResponse = objectMapper.readTree(response.getBody());
+        String webhookUrl = jsonResponse.get("webhook").asText();
+        String accessToken = jsonResponse.get("accessToken").asText();
+        
+        System.out.println("Extracted Webhook URL: " + webhookUrl);
+        System.out.println("Extracted Access Token: " + accessToken.substring(0, Math.min(20, accessToken.length())) + "...");
+        
+        return new WebhookResponse(webhookUrl, accessToken);
+    }
+
+    private String getSqlSolution(boolean isOdd) {
+        System.out.println("\n=== SQL Solution Generation ===");
+        
+        String sqlQuery;
+        if (isOdd) {
+            // Question 1 solution
+            // Note: This is a placeholder. You need to access the actual question from the Google Drive link
+            // and solve the specific SQL problem provided there.
+            sqlQuery = """
+                SELECT e.employee_id, e.name, e.department, e.salary
+                FROM employees e
+                WHERE e.department = 'IT' 
+                AND e.salary > (
+                    SELECT AVG(salary) 
+                    FROM employees 
+                    WHERE department = 'IT'
+                )
+                ORDER BY e.salary DESC;
+                """;
+            System.out.println("Using Question 1 (Odd) SQL solution");
+        } else {
+            // Question 2 solution
+            // Note: This is a placeholder. You need to access the actual question from the Google Drive link
+            // and solve the specific SQL problem provided there.
+            sqlQuery = """
+                SELECT o.order_date, COUNT(*) as order_count, SUM(o.total_amount) as total_revenue
+                FROM orders o
+                WHERE o.order_date >= '2023-01-01'
+                AND o.status = 'COMPLETED'
+                GROUP BY o.order_date
+                HAVING COUNT(*) > 5
+                ORDER BY o.order_date DESC;
+                """;
+            System.out.println("Using Question 2 (Even) SQL solution");
+        }
+        
+        System.out.println("Generated SQL Query:\n" + sqlQuery);
+        return sqlQuery.trim();
+    }
+
+    private void submitSolution(String webhookUrl, String accessToken, String sqlQuery) throws Exception {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("Authorization", accessToken);
+        headers.set("User-Agent", "Spring-Boot-Assignment/1.0");
+        
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("finalQuery", sqlQuery);
+        
+        HttpEntity<Map<String, String>> entity = new HttpEntity<>(requestBody, headers);
+        
+        System.out.println("\n=== Submitting solution ===");
+        System.out.println("Webhook URL: " + webhookUrl);
+        System.out.println("Authorization Token: " + accessToken.substring(0, Math.min(20, accessToken.length())) + "...");
+        System.out.println("Request Body: " + objectMapper.writeValueAsString(requestBody));
+        
+        ResponseEntity<String> response = restTemplate.exchange(webhookUrl, HttpMethod.POST, entity, String.class);
+        
+        System.out.println("Submission Response Status: " + response.getStatusCode());
+        System.out.println("Submission Response Body: " + response.getBody());
+        
+        if (response.getStatusCode().is2xxSuccessful()) {
+            System.out.println("✅ Solution submitted successfully!");
+        } else {
+            System.err.println("❌ Failed to submit solution. Status: " + response.getStatusCode());
+        }
+    }
+
+    // Helper class to hold webhook response data
+    private static class WebhookResponse {
+        final String webhook;
+        final String accessToken;
+        
+        WebhookResponse(String webhook, String accessToken) {
+            this.webhook = webhook;
+            this.accessToken = accessToken;
+        }
+    }
+}
